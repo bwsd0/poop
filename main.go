@@ -9,7 +9,6 @@
 // includes the poop emoji glyph, invoke `curl(1)` with the `-N` option
 // to disable buffering and enjoy this app from the comfort of your
 // terminal.
-
 package main
 
 import (
