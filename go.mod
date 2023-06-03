@@ -1,3 +1,3 @@
-module github.com/bwasd/poop
+module bwsd.dev/poop
 
-go 1.13
+go 1.20

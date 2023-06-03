@@ -2,19 +2,24 @@
 //
 // Usage:
 //
-//  go get [-u] github.com/bwasd/poop
-//  $BROWSER http://localhost:8080
+//	poop [-a addr] [-d delay]
 //
-// In a terminal emulator with Unicode support, with a font that
-// includes the poop emoji glyph, invoke `curl(1)` with the `-N` option
-// to disable buffering and enjoy this app from the comfort of your
-// terminal.
+// BUG: poop cannot be sent using HTTP2 as the specification forbids use
+// chunked-transfer encoding. See: RFC 7540, 8.1.
 package main
 
 import (
 	"bytes"
+	"flag"
+	"fmt"
+	"log"
 	"net/http"
+	"os"
 	"time"
+)
+
+var (
+	addr = flag.String("addr", ":8080", "HTTP listen address")
 )
 
 func makePoop(w http.ResponseWriter, req *http.Request) {
@@ -26,30 +31,27 @@ func makePoop(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// Browsers may buffer chunks instead of rendering the data as it arrives;
-	// To mitigate this, write a partial response with a small payload (1KB) of
-	// non-renderable Unicode and prevent MIME-type sniffing which may also
-	// cause buffering.
+	// Browsers may buffer chunks instead of rendering the data as it arrives; To
+	// mitigate this, write a partial response with a small payload (1KB) of
+	// non-renderable Unicode and prevent MIME-type sniffing which may also cause
+	// buffering.
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 
 	// Zero Width Space ("\u200B")
 	zws := []byte{0xE2, 0x80, 0x8B}
-	bufsz := 1024
-	buf := make([]byte, bufsz)
-	buf = bytes.Repeat(zws, bufsz/len(zws))
-	if _, err := w.Write(buf); err != nil {
+	if _, err := w.Write(bytes.Repeat(zws, 1024/len(zws))); err != nil {
 		panic(err)
 	}
 
-	for {
-		// FIXME: returning an indeterminate-length data stream can be used as an
-		// exploitable resource exhaustion vector.
+	var n int
+	var err error
+	for i := 0; i <= 1024; i += n {
 		select {
 		case <-req.Context().Done():
 			return
 		case <-t.C:
-			if _, err := w.Write([]byte("💩")); err != nil {
+			if n, err = w.Write([]byte{0xF0, 0x9F, 0x92, 0xA9}); err != nil {
 				return
 			}
 			f.Flush()
@@ -57,7 +59,15 @@ func makePoop(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+const usageLine = `usage: poop [-a addr]`
+
 func main() {
+	flag.Parse()
+	if flag.NArg() > 1 {
+		fmt.Fprintln(os.Stderr, usageLine)
+		os.Exit(2)
+	}
+
 	http.HandleFunc("/", makePoop)
-	http.ListenAndServe(":8080", nil)
+	log.Fatal(http.ListenAndServe(*addr, nil))
 }
